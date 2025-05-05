@@ -1150,6 +1150,21 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                     show_label=True,
                     visible=False if model_version !="v3" else True,
                 )
+
+        load_ref_button = gr.Button(i18n("从标注页面接收传输过来的参考音"), variant="primary", scale=7)
+        def load_shared_ref():
+            try:
+                with open("./shared_ref.json", "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data["audio_path"], data["text"], {"__type__": "update"}
+            except:
+                return None, None, {"__type__": "update"}
+
+        load_ref_button.click(
+            load_shared_ref,
+            outputs=[inp_ref, prompt_text, prompt_language]
+        )
+
         gr.Markdown(html_center(i18n("*请填写需要合成的目标文本和语种模式"), "h3"))
         with gr.Row():
             with gr.Column(scale=13):

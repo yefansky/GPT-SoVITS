@@ -102,6 +102,19 @@ def b_submit_change(*text_list):
     return g_index, *b_change_index(g_index, g_batch)
 
 
+def save_selected_to_shared(*checkbox_list):
+    selected_data = []
+    for i, checkbox in enumerate(checkbox_list):
+        if checkbox and g_index + i < len(g_data_json):
+            data = g_data_json[g_index + i]
+            selected_data.append({
+                "audio_path": data[g_json_key_path],
+                "text": data[g_json_key_text].strip()
+            })
+    if selected_data:
+        with open("./shared_ref.json", "w", encoding="utf-8") as f:
+            json.dump(selected_data[0], f)  # 只发送第一个选中的
+
 def b_delete_audio(*checkbox_list):
     global g_data_json, g_index, g_max_json_index
     b_save_file()
@@ -311,6 +324,7 @@ if __name__ == "__main__":
             btn_delete_audio = gr.Button("Delete Audio")
             btn_previous_index = gr.Button("Previous Index")
             btn_next_index = gr.Button("Next Index")
+            btn_send_to_infer = gr.Button("发送选中音频到推理页面作为参考音")
 
         with gr.Row():
             index_slider = gr.Slider(minimum=0, maximum=g_max_json_index, value=g_index, step=1, label="Index", scale=3)
@@ -396,6 +410,8 @@ if __name__ == "__main__":
         btn_invert_selection.click(b_invert_selection, inputs=[*g_checkbox_list], outputs=[*g_checkbox_list])
 
         btn_save_json.click(b_save_file)
+
+        btn_send_to_infer.click(save_selected_to_shared, inputs=g_checkbox_list)
 
         demo.load(
             b_change_index,
