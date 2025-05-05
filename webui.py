@@ -1,5 +1,6 @@
 import os
 import sys
+from webui_config_saver import grTextBox_autoSave
 
 if len(sys.argv) == 1:
     sys.argv.append("v2")
@@ -1354,8 +1355,8 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
             with gr.Row():
                 with gr.Column(scale=3):
                     with gr.Row():
-                        slice_inp_path = gr.Textbox(label=i18n("音频自动切分输入路径，可文件可文件夹"), value="")
-                        slice_opt_root = gr.Textbox(label=i18n("切分后的子音频的输出根目录"), value="output/slicer_opt")
+                        slice_inp_path = grTextBox_autoSave(label=i18n("音频自动切分输入路径，可文件可文件夹"), value="", key="webui.slicer.input_path")
+                        slice_opt_root = grTextBox_autoSave(label=i18n("切分后的子音频的输出根目录"), value="output/slicer_opt", key="webui.slicer.output_root")
                     with gr.Row():
                         threshold = gr.Textbox(label=i18n("threshold:音量小于这个值视作静音的备选切割点"), value="-34")
                         min_length = gr.Textbox(
@@ -1401,8 +1402,8 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
             with gr.Row():
                 with gr.Column(scale=3):
                     with gr.Row():
-                        denoise_input_dir = gr.Textbox(label=i18n("输入文件夹路径"), value="")
-                        denoise_output_dir = gr.Textbox(label=i18n("输出文件夹路径"), value="output/denoise_opt")
+                        denoise_input_dir = grTextBox_autoSave(label=i18n("输入文件夹路径"), value="", key="webui.denoise.input_dir")
+                        denoise_output_dir = grTextBox_autoSave(label=i18n("输出文件夹路径"), value="output/denoise_opt", key="webui.denoise.output_dir")
                     with gr.Row():
                         denoise_info = gr.Textbox(label=process_info(process_name_denoise, "info"))
                 open_denoise_button = gr.Button(
@@ -1416,10 +1417,10 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
             with gr.Row():
                 with gr.Column(scale=3):
                     with gr.Row():
-                        asr_inp_dir = gr.Textbox(
-                            label=i18n("输入文件夹路径"), value="D:\\GPT-SoVITS\\raw\\xxx", interactive=True
+                        asr_inp_dir = grTextBox_autoSave(
+                            label=i18n("输入文件夹路径"), value="D:\\GPT-SoVITS\\raw\\xxx", interactive=True, key="webui.asr.input_dir"
                         )
-                        asr_opt_dir = gr.Textbox(label=i18n("输出文件夹路径"), value="output/asr_opt", interactive=True)
+                        asr_opt_dir = grTextBox_autoSave(label=i18n("输出文件夹路径"), value="output/asr_opt", interactive=True, key="webui.asr.output_dir")
                     with gr.Row():
                         asr_model = gr.Dropdown(
                             label=i18n("ASR 模型"),
@@ -1471,10 +1472,11 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
             with gr.Row():
                 with gr.Column(scale=3):
                     with gr.Row():
-                        path_list = gr.Textbox(
+                        path_list = grTextBox_autoSave(
                             label=i18n("标注文件路径 (含文件后缀 *.list)"),
                             value="D:\\RVC1006\\GPT-SoVITS\\raw\\xxx.list",
                             interactive=True,
+                            key="webui.labeling.path_list"
                         )
                         label_info = gr.Textbox(label=process_info(process_name_subfix, "info"))
                 open_label = gr.Button(value=process_info(process_name_subfix, "open"), variant="primary", visible=True)
@@ -1523,14 +1525,15 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                 gr.Markdown(value=i18n("输出logs/实验名目录下应有23456开头的文件和文件夹"))
                 with gr.Row():
                     with gr.Row():
-                        inp_text = gr.Textbox(
+                        inp_text = grTextBox_autoSave(
                             label=i18n("*文本标注文件"),
                             value=r"D:\RVC1006\GPT-SoVITS\raw\xxx.list",
                             interactive=True,
                             scale=10,
+                            key = "webui.inp_text"
                         )
                     with gr.Row():
-                        inp_wav_dir = gr.Textbox(
+                        inp_wav_dir = grTextBox_autoSave(
                             label=i18n("*训练集音频文件目录"),
                             # value=r"D:\RVC1006\GPT-SoVITS\raw\xxx",
                             interactive=True,
@@ -1538,6 +1541,7 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                                 "填切割后音频所在目录！读取的音频文件完整路径=该目录-拼接-list文件里波形对应的文件名（不是全路径）。如果留空则使用.list文件里的绝对全路径。"
                             ),
                             scale=10,
+                            key = "webui.inp_wav_dir"
                         )
 
                 gr.Markdown(value="1Aa-" + process_name_1a)

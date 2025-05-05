@@ -30,6 +30,7 @@ import sys
 
 import torch
 from text.LangSegmenter import LangSegmenter
+from webui_config_saver import grTextBox_autoSave
 
 try:
     import gradio.analytics as analytics
@@ -1168,7 +1169,7 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
         gr.Markdown(html_center(i18n("*请填写需要合成的目标文本和语种模式"), "h3"))
         with gr.Row():
             with gr.Column(scale=13):
-                text = gr.Textbox(label=i18n("需要合成的文本"), value="", lines=26, max_lines=26)
+                text = grTextBox_autoSave(label=i18n("需要合成的文本"), value="", lines=26, max_lines=26, key = "inference_webui.target_text")
             with gr.Column(scale=7):
                 text_language = gr.Dropdown(
                     label=i18n("需要合成的语种") + i18n(".限制范围越小判别效果越好。"),
