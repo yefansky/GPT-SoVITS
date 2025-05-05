@@ -205,3 +205,4 @@ cython_debug/
 
 .CodeReDesignWorkSpace/*
 shared_ref.json
+webui_config.json
