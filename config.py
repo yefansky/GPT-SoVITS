@@ -27,6 +27,7 @@ webui_port_main = 9874
 webui_port_uvr5 = 9873
 webui_port_infer_tts = 9872
 webui_port_subfix = 9871
+webui_port_clip = 9870
 
 api_port = 9880
 
@@ -65,5 +66,6 @@ class Config:
         self.webui_port_uvr5 = webui_port_uvr5
         self.webui_port_infer_tts = webui_port_infer_tts
         self.webui_port_subfix = webui_port_subfix
+        self.webui_port_clip = webui_port_clip
 
         self.api_port = api_port

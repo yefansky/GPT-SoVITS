@@ -75,6 +75,7 @@ from config import (
     webui_port_main,
     webui_port_subfix,
     webui_port_uvr5,
+    webui_port_clip,
 )
 from tools import my_utils
 from tools.i18n.i18n import I18nAuto, scan_language_list
@@ -376,6 +377,7 @@ def process_info(process_name="", indicator=""):
 
 
 process_name_subfix = i18n("音频标注WebUI")
+process_name_clip = i18n("音频剪辑WebUI")
 
 
 def change_label(path_list):
@@ -405,6 +407,33 @@ def change_label(path_list):
             {"__type__": "update", "visible": False},
         )
 
+
+def change_clip(path_list):
+    global p_label
+    if p_label is None:
+        check_for_existance([path_list])
+        path_list = my_utils.clean_path(path_list)
+        cmd = '"%s" tools/clip_webui.py --load_list "%s" --webui_port %s --is_share %s' % (
+            python_exec,
+            path_list,
+            webui_port_clip,
+            is_share,
+        )
+        yield (
+            process_info(process_name_clip, "opened"),
+            {"__type__": "update", "visible": False},
+            {"__type__": "update", "visible": True},
+        )
+        print(cmd)
+        p_label = Popen(cmd, shell=True)
+    else:
+        kill_process(p_label.pid, process_name_clip)
+        p_label = None
+        yield (
+            process_info(process_name_clip, "closed"),
+            {"__type__": "update", "visible": True},
+            {"__type__": "update", "visible": False},
+        )
 
 process_name_uvr5 = i18n("人声分离WebUI")
 
@@ -1483,16 +1512,24 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                 close_label = gr.Button(
                     value=process_info(process_name_subfix, "close"), variant="primary", visible=False
                 )
+                open_clip = gr.Button(value=process_info(process_name_clip, "open"), variant="primary", visible=True)
+                close_clip = gr.Button(
+                    value=process_info(process_name_clip, "close"), variant="primary", visible=False
+                )
 
             open_label.click(change_label, [path_list], [label_info, open_label, close_label])
             close_label.click(change_label, [path_list], [label_info, open_label, close_label])
+
+            open_clip.click(change_clip, [path_list], [label_info, open_clip, close_clip])
+            close_clip.click(change_clip, [path_list], [label_info, open_clip, close_clip])
+
             open_uvr5.click(change_uvr5, [], [uvr5_info, open_uvr5, close_uvr5])
             close_uvr5.click(change_uvr5, [], [uvr5_info, open_uvr5, close_uvr5])
 
         with gr.TabItem(i18n("1-GPT-SoVITS-TTS")):
             with gr.Row():
                 with gr.Row():
-                    exp_name = gr.Textbox(label=i18n("*实验/模型名"), value="xxx", interactive=True)
+                    exp_name = grTextBox_autoSave(label=i18n("*实验/模型名"), value="xxx", interactive=True, key="webui.exp_name")
                     gpu_info = gr.Textbox(label=i18n("显卡信息"), value=gpu_info, visible=True, interactive=False)
                     version_checkbox = gr.Radio(label=i18n("版本"), value=version, choices=["v1", "v2", "v4"])#, "v3"
                 with gr.Row():
