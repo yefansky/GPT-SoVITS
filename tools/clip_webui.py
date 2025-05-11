@@ -425,6 +425,15 @@ def set_global(load_json, load_list, json_key_text, json_key_path, batch):
     g_json_key_path = json_key_path
     b_load_file()
 
+def create_checkbox_handler(index, total_checkboxes):
+    def handler(value):
+        new_index = index if value else -1
+        new_states = [False] * total_checkboxes
+        if value:
+            new_states[index] = True
+        return [new_index] + new_states
+    return handler
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Audio Clipper WebUI")
     parser.add_argument("--load_list", required=True, help="source file, like demo.list")
@@ -497,40 +506,13 @@ if __name__ == "__main__":
                     merged_audio_output = gr.Audio(label="合并后的音频")
                     btn_send_to_infer = gr.Button("发送到推理页")
 
-        def create_checkbox_handler(total_checkboxes):
-            def handler(*args):
-                # args[0:-1]是各个checkbox的当前值
-                # args[-1]是之前选中的index
-                current_states = list(args[:-1])
-                previous_index = args[-1]
-                
-                # 找出哪个checkbox发生了变化
-                changed_index = None
-                for i in range(total_checkboxes):
-                    if current_states[i] != (i == previous_index):
-                        changed_index = i
-                        break
-                
-                # 确定新的选中状态
-                new_index = -1
-                new_states = [False] * total_checkboxes
-                
-                if changed_index is not None:
-                    if current_states[changed_index]:  # 如果是选中操作
-                        new_index = changed_index
-                        new_states[changed_index] = True
-                    # 如果是取消选中操作，保持new_index=-1
-                
-                return [new_index] + new_states
-            return handler
-
         # 绑定事件 - 所有checkbox共享同一个handler
         total_checkboxes = len(g_edit_area_checkboxes)
-        for cb in g_edit_area_checkboxes:
+        for i, cb in enumerate(g_edit_area_checkboxes):
             cb.change(
-                fn=create_checkbox_handler(total_checkboxes),
-                inputs=[*g_edit_area_checkboxes, selected_index],
-                outputs=[selected_index, *g_edit_area_checkboxes]
+                fn=create_checkbox_handler(i, total_checkboxes),
+                inputs=cb,  # 只传入当前 checkbox
+                outputs=[selected_index] + g_edit_area_checkboxes
             )
 
         btn_previous_index.click(
