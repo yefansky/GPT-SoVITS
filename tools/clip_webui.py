@@ -9,13 +9,12 @@ import soundfile
 import json
 import copy
 
-"""
+
 import debugpy
 debugpy.listen(("localhost", 5678))
 print("Waiting for debugger to attach...")
 debugpy.wait_for_client()
 print("Debugger attached")
-"""
 
 g_json_key_text = "text"
 g_json_key_path = "wav_path"
@@ -27,7 +26,7 @@ g_text_list = []
 g_audio_list = []
 g_checkbox_list = []
 g_data_json = []
-g_selected_items = []
+g_edit_area_items = []
 g_search_query = None
 g_filtered_indices = None
 
@@ -105,13 +104,13 @@ def b_submit_change(*text_list):
         b_save_file()
     return g_index, *b_change_index(g_index, g_batch)
 
-def save_selected_to_shared(*checkbox_list):
-    selected_data = []
-    if g_selected_items:
-        selected_data = [{
+def save_edit_area_to_shared(*checkbox_list):
+    edit_area_data = []
+    if g_edit_area_items:
+        edit_area_data = [{
             "audio_path": item["path"],
             "text": item["text"]
-        } for item in g_selected_items]
+        } for item in g_edit_area_items]
     else:
         for i, checkbox in enumerate(checkbox_list):
             if checkbox:
@@ -124,16 +123,16 @@ def save_selected_to_shared(*checkbox_list):
                         data = g_data_json[g_index + i]
                 
                 if data:
-                    selected_data.append({
+                    edit_area_data.append({
                         "audio_path": data[g_json_key_path],
                         "text": data[g_json_key_text].strip()
                     })
     
-    if selected_data:
+    if edit_area_data:
         with open("./shared_ref.json", "w", encoding="utf-8") as f:
-            json.dump(selected_data[0] if len(selected_data) == 1 else {
+            json.dump(edit_area_data[0] if len(edit_area_data) == 1 else {
                 "audio_path": "merged_audio.wav",
-                "text": " ".join([d["text"] for d in selected_data])
+                "text": " ".join([d["text"] for d in edit_area_data])
             }, f)
 
 def search_text(query):
@@ -155,90 +154,94 @@ def search_text(query):
     
     return {"value": 0, "maximum": g_max_json_index, "__type__": "update"}, *b_change_index(0, g_batch)
 
-def update_selected_items(action, item_index=None, new_order=None, checkbox_values=None, radio_value=None):
-    global g_selected_items
+def update_select_item(action, checkbox_values):
+    global g_edit_area_items
+    
     if action == "add_from_checkboxes":
-        g_selected_items = []
+        new_items = []
         for i, checked in enumerate(checkbox_values):
             if checked and g_index + i < len(g_data_json):
                 item = g_data_json[g_index + i]
-                g_selected_items.append({
-                    "text": item[g_json_key_text],
-                    "path": item[g_json_key_path],
-                    "index": g_index + i
-                })
-    elif action == "add":
-        if checkbox_values and len(g_selected_items) < 5:
-            idx = checkbox_values
-            if idx < len(g_data_json):
-                item = g_data_json[idx]
-                if not any(item["index"] == idx for item in g_selected_items):
-                    g_selected_items.append({
+                # 防止重复添加
+                if not any(existing["index"] == g_index + i for existing in g_edit_area_items):
+                    new_items.append({
                         "text": item[g_json_key_text],
                         "path": item[g_json_key_path],
-                        "index": idx
+                        "index": g_index + i
                     })
-    elif action == "remove":
-        if item_index is not None and 0 <= item_index < len(g_selected_items):
-            g_selected_items.pop(item_index)
-    elif action == "reorder" and radio_value is not None:
-        selected_idx = int(radio_value.split()[-1]) - 1  # Extract index from "Item X"
-        if selected_idx < 0 or selected_idx >= len(g_selected_items):
-            return update_selected_items("no_action")
-        new_order = list(range(len(g_selected_items)))
-        if new_order and 0 <= selected_idx < len(new_order):
-            if item_index == "up" and selected_idx > 0:
-                new_order[selected_idx], new_order[selected_idx - 1] = new_order[selected_idx - 1], new_order[selected_idx]
-            elif item_index == "down" and selected_idx < len(new_order) - 1:
-                new_order[selected_idx], new_order[selected_idx + 1] = new_order[selected_idx + 1], new_order[selected_idx]
-        g_selected_items = [g_selected_items[i] for i in new_order]
-    elif action == "clear":
-        g_selected_items = []
-    elif action == "no_action":
-        pass
+        
+        # 合并新项（不超过最大限制）
+        MAX_ITEMS = 5
+        combined = g_edit_area_items + new_items
+        g_edit_area_items = combined[:MAX_ITEMS]
+        
+        if len(combined) > MAX_ITEMS:
+            gr.Warning(f"剪辑区已满，只保留了前{MAX_ITEMS}项")
     
+    return generate_edit_area_outputs()
+
+def handle_edit_area_actions(action, *checkbox_states):
+    global g_edit_area_items
+    
+    # 从checkbox_states获取所有checkbox的当前值
+    checkbox_values = checkbox_states[:5]  # 假设最多5个编辑项
+    
+    if action == "remove":
+        # 找出第一个选中的checkbox索引
+        selected_index = next((i for i, checked in enumerate(checkbox_values) if checked), None)
+        if selected_index is not None and selected_index < len(g_edit_area_items):
+            g_edit_area_items.pop(selected_index)
+            gr.Info(f"已移除第 {selected_index+1} 项")
+            
+    elif action == "clear":
+        if g_edit_area_items:
+            g_edit_area_items.clear()
+            gr.Info("已清空剪辑区")
+    
+    elif action == "move_up":
+        selected_index = next((i for i, checked in enumerate(checkbox_values) if checked), None)
+        if selected_index is not None and selected_index > 0:
+            g_edit_area_items[selected_index], g_edit_area_items[selected_index-1] = \
+                g_edit_area_items[selected_index-1], g_edit_area_items[selected_index]
+    
+    elif action == "move_down":
+        selected_index = next((i for i, checked in enumerate(checkbox_values) if checked), None)
+        if selected_index is not None and selected_index < len(g_edit_area_items)-1:
+            g_edit_area_items[selected_index], g_edit_area_items[selected_index+1] = \
+                g_edit_area_items[selected_index+1], g_edit_area_items[selected_index]
+    
+    return generate_edit_area_outputs()
+
+# 新增生成剪辑区输出的函数
+def generate_edit_area_outputs():
     outputs = []
-    selected_radio_value = f"Item {1}" if g_selected_items else None  # Default to first item if any
     for i in range(5):
-        if i < len(g_selected_items):
+        if i < len(g_edit_area_items):
+            # Checkbox更新 (移除choices参数)
             outputs.append({
-                "choices": [f"Item {i+1}"],
-                "value": selected_radio_value if f"Item {i+1}" == selected_radio_value else None,
-                "visible": True,
+                "value": False,  # 默认不选中
                 "__type__": "update"
             })
+            # Textbox更新
             outputs.append({
-                "value": g_selected_items[i]["text"],
-                "visible": True,
+                "value": g_edit_area_items[i]["text"],
                 "__type__": "update"
             })
+            # Audio更新
             outputs.append({
-                "value": g_selected_items[i]["path"],
-                "visible": True,
+                "value": g_edit_area_items[i]["path"],
                 "__type__": "update"
             })
         else:
-            outputs.append({
-                "choices": [],
-                "value": None,
-                "visible": False,
-                "__type__": "update"
-            })
-            outputs.append({
-                "value": "",
-                "visible": False,
-                "__type__": "update"
-            })
-            outputs.append({
-                "value": None,
-                "visible": False,
-                "__type__": "update"
-            })
+            # 隐藏多余的项目
+            outputs.append({"value": False, "__type__": "update"})
+            outputs.append({"value": "",  "__type__": "update"})
+            outputs.append({"value": None, "__type__": "update"})
     return outputs
 
-def merge_selected_audio(interval):
-    global g_selected_items
-    if not g_selected_items:
+def merge_edit_area_audio(interval):
+    global g_edit_area_items
+    if not g_edit_area_items:
         return None
     
     audio_list = []
@@ -246,9 +249,9 @@ def merge_selected_audio(interval):
     timestamp = str(int(time.time()))
     os.makedirs("temp", exist_ok=True)
     output_path = os.path.join("temp", f"merged_{timestamp}.wav")
-    merged_text = " ".join([item["text"].strip() for item in g_selected_items])
+    merged_text = " ".join([item["text"].strip() for item in g_edit_area_items])
     
-    for item in g_selected_items:
+    for item in g_edit_area_items:
         data, sr = librosa.load(item["path"], sr=sample_rate, mono=True)
         sample_rate = sr
         if audio_list:
@@ -259,10 +262,7 @@ def merge_selected_audio(interval):
     merged_audio = np.concatenate(audio_list)
     soundfile.write(output_path, merged_audio, sample_rate)
     
-    return {
-        "audio_path": output_path,
-        "text": merged_text
-    }
+    return merged_text, output_path 
 
 def b_delete_audio(*checkbox_list):
     global g_data_json, g_index, g_max_json_index
@@ -447,13 +447,12 @@ if __name__ == "__main__":
         with gr.Row():
             search_box = gr.Textbox(label="搜索文本", placeholder="输入搜索内容...")
             btn_search = gr.Button("搜索")
-            btn_add_to_selected = gr.Button("添加到选中区")
-            btn_merge_selected = gr.Button("合并选中音频")
+            btn_add_to_edit = gr.Button("添加到剪辑区")
             btn_send_to_infer = gr.Button("发送到推理页")
         
         with gr.Row():
             index_slider = gr.Slider(minimum=0, maximum=g_max_json_index, value=g_index, step=1, label="Index", scale=3)
-            interval_slider = gr.Slider(minimum=0, maximum=2, value=0.5, step=0.1, label="合并间隔(秒)", scale=3)
+            
             btn_previous_index = gr.Button("上一页")
             btn_next_index = gr.Button("下一页")
 
@@ -472,36 +471,73 @@ if __name__ == "__main__":
             batchsize_slider = gr.Slider(
                 minimum=1, maximum=g_batch, value=g_batch, step=1, label="Batch Size", scale=3, interactive=False
             )
-            interval_slider = gr.Slider(minimum=0, maximum=2, value=0, step=0.01, label="Interval", scale=3)
+            # interval_slider = gr.Slider(minimum=0, maximum=2, value=0, step=0.01, label="Interval", scale=3)
             btn_theme_dark = gr.Button("Light Theme", link="?__theme=light", scale=1)
             btn_theme_light = gr.Button("Dark Theme", link="?__theme=dark", scale=1)
                 
+        selected_index = gr.State(value=-1)
         with gr.Row():
             with gr.Column():
-                gr.Markdown("### Selected Items")
+                gr.Markdown("### 剪辑区")
                 with gr.Group():
-                    selected_items_container = []
-                    selected_radios = []
+                    edit_area_container = []
+                    g_edit_area_checkboxes = []
+                    edit_radios = []
                     for i in range(5):
                         with gr.Row(visible=True):
-                            radio = gr.Radio(
-                                choices=[f"Item {i+1}"],
-                                value=None,
-                                show_label=False,
-                                interactive=True,
-                                scale=1
-                            )
-                            text = gr.Textbox(label=f"Selected Text {i+1}", value="", scale=5)
-                            audio = gr.Audio(label=f"Selected Audio {i+1}", interactive=False, scale=5)
-                            selected_items_container.append((radio, text, audio))
-                            selected_radios.append(radio)
+                            cb = gr.Checkbox(label=f"片段 {i+1}", interactive=True)
+                            text = gr.Textbox(label=f"编辑文本 {i+1}", value="", scale=5)
+                            audio = gr.Audio(label=f"编辑音频 {i+1}", interactive=False, scale=5)
+                            edit_area_container.append((cb, text, audio))
+                            g_edit_area_checkboxes.append(cb)
                     
                     with gr.Row():
-                        btn_remove_selected = gr.Button("移除选中项")
+                        btn_remove_edit = gr.Button("移除选中项")
                         btn_move_up = gr.Button("上移")
                         btn_move_down = gr.Button("下移")
-                        btn_clear_selected = gr.Button("清空列表")
-                    merged_audio_output = gr.Audio(label="合并后的音频", visible=False)
+                        btn_clear_edit = gr.Button("清空列表")
+
+                        interval_slider = gr.Slider(minimum=0, maximum=2, value=0.5, step=0.1, label="合并间隔(秒)", scale=3)
+                        btn_merge_edit = gr.Button("合并剪辑区音频")
+
+                    merged_audio_text = gr.Textbox(label="合并后的文本")
+                    merged_audio_output = gr.Audio(label="合并后的音频")
+
+        def create_checkbox_handler(total_checkboxes):
+            def handler(*args):
+                # args[0:-1]是各个checkbox的当前值
+                # args[-1]是之前选中的index
+                current_states = list(args[:-1])
+                previous_index = args[-1]
+                
+                # 找出哪个checkbox发生了变化
+                changed_index = None
+                for i in range(total_checkboxes):
+                    if current_states[i] != (i == previous_index):
+                        changed_index = i
+                        break
+                
+                # 确定新的选中状态
+                new_index = -1
+                new_states = [False] * total_checkboxes
+                
+                if changed_index is not None:
+                    if current_states[changed_index]:  # 如果是选中操作
+                        new_index = changed_index
+                        new_states[changed_index] = True
+                    # 如果是取消选中操作，保持new_index=-1
+                
+                return [new_index] + new_states
+            return handler
+
+        # 绑定事件 - 所有checkbox共享同一个handler
+        total_checkboxes = len(g_edit_area_checkboxes)
+        for cb in g_edit_area_checkboxes:
+            cb.change(
+                fn=create_checkbox_handler(total_checkboxes),
+                inputs=[*g_edit_area_checkboxes, selected_index],
+                outputs=[selected_index, *g_edit_area_checkboxes]
+            )
 
         btn_previous_index.click(
             b_previous_index,
@@ -521,60 +557,42 @@ if __name__ == "__main__":
             outputs=[index_slider, *g_text_list, *g_audio_list, *g_checkbox_list]
         )
 
-        btn_add_to_selected.click(
-            fn=lambda *checks: update_selected_items("add_from_checkboxes", checkbox_values=checks),
+        btn_add_to_edit.click(
+            fn=lambda *checks: update_select_item("add_from_checkboxes", checkbox_values=checks),
             inputs=[*g_checkbox_list],
-            outputs=[*[comp for pair in selected_items_container for comp in pair]]
+            outputs=[*[comp for row in edit_area_container for comp in row]]
         )
 
-        btn_remove_selected.click(
-            fn=lambda *radios: update_selected_items(
-                "remove", 
-                item_index=[i for i, r in enumerate(radios) if r][0] if any(radios) else 0
-            ),
-            inputs=selected_radios,
-            outputs=[*[comp for pair in selected_items_container for comp in pair]]
+        btn_remove_edit.click(
+            fn=lambda *checks: handle_edit_area_actions("remove", *checks),
+            inputs=gr.Textbox(visible=False),  # Workaround to get radio value
+            outputs=[*[comp for row in edit_area_container for comp in row]]
         )
 
         btn_move_up.click(
-            fn=lambda *radios: update_selected_items(
-                "reorder", 
-                item_index="up", 
-                radio_value=[r for r in radios if r][0] if any(radios) else None
-            ),
-            inputs=selected_radios,
-            outputs=[*[comp for pair in selected_items_container for comp in pair]]
+            fn=lambda *checks: handle_edit_area_actions("move_up", *checks),
+            inputs=gr.Textbox(visible=False),
+            outputs=[*[comp for row in edit_area_container for comp in row]]
         )
 
         btn_move_down.click(
-            fn=lambda *radios: update_selected_items(
-                "reorder", 
-                item_index="down", 
-                radio_value=[r for r in radios if r][0] if any(radios) else None
-            ),
-            inputs=selected_radios,
-            outputs=[*[comp for pair in selected_items_container for comp in pair]]
+            fn=lambda *checks: handle_edit_area_actions("move_down",*checks),
+            inputs=gr.Textbox(visible=False),
+            outputs=[*[comp for row in edit_area_container for comp in row]]
         )
 
-        btn_clear_selected.click(
-            fn=lambda: update_selected_items("clear"),
-            outputs=[*[comp for pair in selected_items_container for comp in pair]]
+        btn_clear_edit.click(
+            fn=lambda: handle_edit_area_actions("clear"),
+            outputs=[*[comp for row in edit_area_container for comp in row]]
         )
 
-        btn_merge_selected.click(
-            fn=merge_selected_audio,
+        btn_merge_edit.click(
+            fn=merge_edit_area_audio,
             inputs=[interval_slider],
-            outputs=[merged_audio_output]
+            outputs=[merged_audio_text, merged_audio_output]
         )
 
-        for i, checkbox in enumerate(g_checkbox_list):
-            checkbox.change(
-                fn=lambda x, idx=i: update_selected_items("add", checkbox_values=g_index + idx) if x else update_selected_items("no_action"),
-                inputs=[checkbox],
-                outputs=[*[comp for pair in selected_items_container for comp in pair]]
-            )
-
-        btn_send_to_infer.click(save_selected_to_shared, inputs=g_checkbox_list)
+        btn_send_to_infer.click(save_edit_area_to_shared, inputs=g_checkbox_list)
 
         demo.load(
             b_change_index,
