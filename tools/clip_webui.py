@@ -236,8 +236,11 @@ def merge_edit_area_audio(interval):
     audio_list = []
     sample_rate = None
     timestamp = str(int(time.time()))
-    os.makedirs("temp", exist_ok=True)
-    output_path = os.path.join("temp", f"merged_{timestamp}.wav")
+
+    current_dir = os.getcwd()
+    temp_dir = os.path.join(current_dir, "temp")
+    os.makedirs(temp_dir, exist_ok=True)
+    output_path = os.path.join(temp_dir, f"merged_{timestamp}.wav")
     merged_text = " ".join([item["text"].strip() for item in g_edit_area_items])
     
     for item in g_edit_area_items:
