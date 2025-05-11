@@ -559,19 +559,19 @@ if __name__ == "__main__":
 
         btn_remove_edit.click(
             fn=lambda *checks: handle_edit_area_actions("remove", *checks),
-            inputs=gr.Textbox(visible=False),  # Workaround to get radio value
+            inputs=g_edit_area_checkboxes,  # Workaround to get radio value
             outputs=[*[comp for row in edit_area_container for comp in row]]
         )
 
         btn_move_up.click(
             fn=lambda *checks: handle_edit_area_actions("move_up", *checks),
-            inputs=gr.Textbox(visible=False),
+            inputs=g_edit_area_checkboxes,
             outputs=[*[comp for row in edit_area_container for comp in row]]
         )
 
         btn_move_down.click(
             fn=lambda *checks: handle_edit_area_actions("move_down",*checks),
-            inputs=gr.Textbox(visible=False),
+            inputs=g_edit_area_checkboxes,
             outputs=[*[comp for row in edit_area_container for comp in row]]
         )
 
