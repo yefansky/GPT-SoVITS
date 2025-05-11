@@ -9,12 +9,13 @@ import soundfile
 import json
 import copy
 
-
+"""
 import debugpy
 debugpy.listen(("localhost", 5678))
 print("Waiting for debugger to attach...")
 debugpy.wait_for_client()
 print("Debugger attached")
+"""
 
 g_json_key_text = "text"
 g_json_key_path = "wav_path"
