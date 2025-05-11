@@ -104,36 +104,25 @@ def b_submit_change(*text_list):
         b_save_file()
     return g_index, *b_change_index(g_index, g_batch)
 
-def save_edit_area_to_shared(*checkbox_list):
-    edit_area_data = []
-    if g_edit_area_items:
-        edit_area_data = [{
-            "audio_path": item["path"],
-            "text": item["text"]
-        } for item in g_edit_area_items]
-    else:
-        for i, checkbox in enumerate(checkbox_list):
-            if checkbox:
-                if g_filtered_indices:
-                    if g_index + i < len(g_filtered_indices):
-                        data_index = g_filtered_indices[g_index + i]
-                        data = g_data_json[data_index]
-                else:
-                    if g_index + i < len(g_data_json):
-                        data = g_data_json[g_index + i]
-                
-                if data:
-                    edit_area_data.append({
-                        "audio_path": data[g_json_key_path],
-                        "text": data[g_json_key_text].strip()
-                    })
+def save_edit_area_to_shared(text, audio_path):
+    # 检查输入是否有效
+    if not text or not audio_path:
+        gr.Warning("文本或音频路径为空，无法保存到 shared_ref.json")
+        return
     
-    if edit_area_data:
+    # 构建要保存的数据
+    data = {
+        "audio_path": audio_path,
+        "text": text.strip()
+    }
+    
+    # 保存到 shared_ref.json
+    try:
         with open("./shared_ref.json", "w", encoding="utf-8") as f:
-            json.dump(edit_area_data[0] if len(edit_area_data) == 1 else {
-                "audio_path": "merged_audio.wav",
-                "text": " ".join([d["text"] for d in edit_area_data])
-            }, f)
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        gr.Info("已成功保存到 shared_ref.json")
+    except Exception as e:
+        gr.Error(f"保存到 shared_ref.json 失败: {str(e)}")
 
 def search_text(query):
     global g_search_query, g_filtered_indices, g_index
@@ -262,7 +251,7 @@ def merge_edit_area_audio(interval):
     merged_audio = np.concatenate(audio_list)
     soundfile.write(output_path, merged_audio, sample_rate)
     
-    return merged_text, output_path 
+    return merged_text, output_path, output_path
 
 def b_delete_audio(*checkbox_list):
     global g_data_json, g_index, g_max_json_index
@@ -448,7 +437,6 @@ if __name__ == "__main__":
             search_box = gr.Textbox(label="搜索文本", placeholder="输入搜索内容...")
             btn_search = gr.Button("搜索")
             btn_add_to_edit = gr.Button("添加到剪辑区")
-            btn_send_to_infer = gr.Button("发送到推理页")
         
         with gr.Row():
             index_slider = gr.Slider(minimum=0, maximum=g_max_json_index, value=g_index, step=1, label="Index", scale=3)
@@ -476,6 +464,7 @@ if __name__ == "__main__":
             btn_theme_light = gr.Button("Dark Theme", link="?__theme=dark", scale=1)
                 
         selected_index = gr.State(value=-1)
+        audio_path_state = gr.State()
         with gr.Row():
             with gr.Column():
                 gr.Markdown("### 剪辑区")
@@ -502,6 +491,7 @@ if __name__ == "__main__":
 
                     merged_audio_text = gr.Textbox(label="合并后的文本")
                     merged_audio_output = gr.Audio(label="合并后的音频")
+                    btn_send_to_infer = gr.Button("发送到推理页")
 
         def create_checkbox_handler(total_checkboxes):
             def handler(*args):
@@ -589,10 +579,10 @@ if __name__ == "__main__":
         btn_merge_edit.click(
             fn=merge_edit_area_audio,
             inputs=[interval_slider],
-            outputs=[merged_audio_text, merged_audio_output]
+            outputs=[merged_audio_text, merged_audio_output, audio_path_state]
         )
 
-        btn_send_to_infer.click(save_edit_area_to_shared, inputs=g_checkbox_list)
+        btn_send_to_infer.click(save_edit_area_to_shared, inputs=[merged_audio_text, audio_path_state])
 
         demo.load(
             b_change_index,
