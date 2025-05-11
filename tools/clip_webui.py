@@ -20,6 +20,7 @@ print("Debugger attached")
 g_json_key_text = "text"
 g_json_key_path = "wav_path"
 g_load_file = ""
+g_load_format = ""  # Add this line
 g_batch = 10
 g_index = 0
 g_max_json_index = 0
@@ -151,16 +152,19 @@ def update_select_item(action, checkbox_values):
         new_items = []
         for i, checked in enumerate(checkbox_values):
             if checked and g_index + i < len(g_data_json):
-                item = g_data_json[g_index + i]
-                # 防止重复添加
-                if not any(existing["index"] == g_index + i for existing in g_edit_area_items):
-                    new_items.append({
-                        "text": item[g_json_key_text],
-                        "path": item[g_json_key_path],
-                        "index": g_index + i
-                    })
+                # Use filtered indices if search is active, otherwise use direct index
+                data_index = g_filtered_indices[g_index + i] if g_filtered_indices is not None else g_index + i
+                if data_index < len(g_data_json):  # Ensure index is valid
+                    item = g_data_json[data_index]
+                    # Prevent duplicate additions
+                    if not any(existing["index"] == data_index for existing in g_edit_area_items):
+                        new_items.append({
+                            "text": item[g_json_key_text],
+                            "path": item[g_json_key_path],
+                            "index": data_index
+                        })
         
-        # 合并新项（不超过最大限制）
+        # Merge new items (limit to MAX_ITEMS)
         MAX_ITEMS = 5
         combined = g_edit_area_items + new_items
         g_edit_area_items = combined[:MAX_ITEMS]
@@ -440,7 +444,9 @@ if __name__ == "__main__":
     parser.add_argument("--is_share", default="False", help="whether webui is_share=True")
     parser.add_argument("--webui_port_clip", default=9870, help="webui port")
     parser.add_argument("--g_batch", default=10, help="max number of items to display")
+    
     args = parser.parse_args()
+
     g_load_file = args.load_list
     g_batch = int(args.g_batch)
     b_load_list()
