@@ -15,7 +15,14 @@ def slice(inp, opt_root, threshold, min_length, min_interval, hop_size, max_sil_
     if os.path.isfile(inp):
         input = [inp]
     elif os.path.isdir(inp):
-        input = [os.path.join(inp, name) for name in sorted(list(os.listdir(inp)))]
+        input = []
+        # 使用os.walk递归遍历所有子目录
+        for root, _, files in os.walk(inp):
+            for file in files:
+                # 可选：添加音频文件扩展名过滤
+                if file.lower().endswith(('.wav', '.mp3', '.flac', '.ogg')):
+                    input.append(os.path.join(root, file))
+        input.sort()  # 保持排序一致性
     else:
         return "输入路径存在但既不是文件也不是文件夹"
     slicer = Slicer(
