@@ -473,13 +473,104 @@ def get_spepc(hps, filename):
     )
     return spec
 
+def find_custom_tone(text):  
+    text = text.replace(" ", "")  
+    tone_list = []  
+      
+    # 处理完整拼音格式：(pinyin)  
+    pinyin_matches = list(re.finditer(r"\(([^)]+)\)", text))  
+    pinyin_offset = 0  
+    for match in pinyin_matches:  
+        pos = match.start() - pinyin_offset  
+        pinyin = match.group(1)  
+        pinyin_offset += (2 + len(pinyin))  
+        data = [pinyin, pos, "full"]  # 标记为完整拼音  
+        tone_list.append(data)  
+      
+    # 处理声调格式：{tone}  
+    text = re.sub(r"\([^)]+\)", "", text)  # 先移除拼音格式  
+    tone_matches = list(re.finditer(r"{(.*?)}", text))  
+    tone_offset = 0  
+    for match in tone_matches:  
+        pos = match.start() - tone_offset  
+        tone = match.group(1)  
+        tone_offset += (2 + len(tone))  
+        data = [tone, pos, "tone"]  # 标记为仅声调  
+        tone_list.append(data)  
+      
+    return re.sub(r"{.*?}", "", text), tone_list
 
-def clean_text_inf(text, language, version):
-    language = language.replace("all_", "")
-    phones, word2ph, norm_text = clean_text(text, language, version)
-    phones = cleaned_text_to_sequence(phones, version)
+def clean_text_inf(text, language, version):  
+    language = language.replace("all_", "")  
+      
+    # 处理自定义读音  
+    text, tone_data_list = find_custom_tone(text)  
+      
+    phones, word2ph, norm_text = clean_text(text, language, version)  
+      
+    # 在转换为ID之前修改音素字符串  
+    for tone_data in tone_data_list:  
+        content = tone_data[0]  
+        pos = tone_data[1]  
+        data_type = tone_data[2]  # "full" 或 "tone"  
+          
+        wd_pos = 0  
+        for i in range(0, pos):  
+            wd_pos += word2ph[i]  
+        wd_pos -= 1  
+          
+        if wd_pos >= 0 and wd_pos < len(phones):  
+            org_phones = phones[wd_pos]  
+              
+            if data_type == "full":  
+                # 完整拼音替换 - 保持原有音素结构  
+                from text.chinese2 import pinyin_to_symbol_map  
+                  
+                if content and content[-1].isdigit():  
+                    tone = content[-1]  
+                    pinyin_without_tone = content[:-1]  
+                      
+                    if pinyin_without_tone in pinyin_to_symbol_map:  
+                        symbol = pinyin_to_symbol_map[pinyin_without_tone]  
+                          
+                        # 分析原始音素结构  
+                        if isinstance(org_phones, str):  
+                            # 原始是单音素（韵母），如 en4, ang4  
+                            if " " in symbol:  
+                                # 目标拼音有声母，但原始没有，只取韵母部分  
+                                final = symbol.split(" ")[1]  
+                                phones[wd_pos] = final + tone  
+                            else:  
+                                # 目标拼音也没有声母  
+                                phones[wd_pos] = symbol + tone  
+                        elif isinstance(org_phones, list) and len(org_phones) == 2:  
+                            # 原始是双音素（声母+韵母）  
+                            if " " in symbol:  
+                                # 目标也有声母，正常替换  
+                                initial, final = symbol.split(" ")  
+                                phones[wd_pos] = [initial, final + tone]  
+                            else:  
+                                # 目标没有声母，构造虚拟声母  
+                                phones[wd_pos] = ["sp", symbol + tone]  
+                              
+                            print(f"[+]成功替换拼音: {org_phones} => {phones[wd_pos]}")  
+            elif data_type == "tone":  
+                # 仅修改声调  
+                if isinstance(org_phones, str) and org_phones[-1].isdigit():  
+                    phones[wd_pos] = org_phones[:-1] + content  
+                    print(f"[+]成功修改声调: {org_phones} => {phones[wd_pos]}")  
+      
+    # 展平音素列表并转换为整数ID  
+    flat_phones = []  
+    for phone in phones:  
+        if isinstance(phone, list):  
+            flat_phones.extend(phone)  
+        else:  
+            flat_phones.append(phone)  
+      
+    phones = cleaned_text_to_sequence(flat_phones, version)  
+      
     return phones, word2ph, norm_text
-
 
 dtype = torch.float16 if is_half == True else torch.float32
 
@@ -529,13 +620,13 @@ def get_phones_and_bert(text, language, version, final=False):
         while "  " in formattext:
             formattext = formattext.replace("  ", " ")
         if language == "all_zh":
-            if re.search(r"[A-Za-z]", formattext):
-                formattext = re.sub(r"[a-z]", lambda x: x.group(0).upper(), formattext)
-                formattext = chinese.mix_text_normalize(formattext)
-                return get_phones_and_bert(formattext, "zh", version)
-            else:
-                phones, word2ph, norm_text = clean_text_inf(formattext, language, version)
-                bert = get_bert_feature(norm_text, word2ph).to(device)
+            #if re.search(r"[A-Za-z]", formattext):
+                #formattext = re.sub(r"[a-z]", lambda x: x.group(0).upper(), formattext)
+                #formattext = chinese.mix_text_normalize(formattext)
+                #return get_phones_and_bert(formattext, "zh", version)
+            #else:
+            phones, word2ph, norm_text = clean_text_inf(formattext, language, version)
+            bert = get_bert_feature(norm_text, word2ph).to(device)
         elif language == "all_yue" and re.search(r"[A-Za-z]", formattext):
             formattext = re.sub(r"[a-z]", lambda x: x.group(0).upper(), formattext)
             formattext = chinese.mix_text_normalize(formattext)
