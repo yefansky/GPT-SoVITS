@@ -549,6 +549,8 @@ def clean_text_inf(text, language, version):
     for i, count in enumerate(word2ph):
         char_to_phone_range.append((current_idx, current_idx + count))
         current_idx += count
+
+    custom_indices = []
     
     # 处理自定义读音替换
     for tone_data in tone_data_list:  
@@ -599,6 +601,7 @@ def clean_text_inf(text, language, version):
                                 old_start, old_end = char_to_phone_range[j]
                                 char_to_phone_range[j] = (old_start + diff, old_end + diff)
                         
+                        custom_indices.append(pos)
                         print(f"[+]完整拼音替换: 位置{pos}({norm_text[pos]}) {phones_list[start_idx:start_idx+new_count]}")
     
     # 现在phones_list已经是展平后的音素列表
@@ -608,7 +611,7 @@ def clean_text_inf(text, language, version):
     phones_ids = cleaned_text_to_sequence(phones_list, version)  
     print_word2ph_details(word2ph, phones_ids, list(norm_text), "final")
 
-    return phones_ids, word2ph, norm_text
+    return phones_ids, word2ph, norm_text, custom_indices
 
 dtype = torch.float16 if is_half == True else torch.float32
 
@@ -653,6 +656,7 @@ from text import chinese
 
 
 def get_phones_and_bert(text, language, version, final=False):
+    custom_indices  = []
     if language in {"en", "all_zh", "all_ja", "all_ko", "all_yue"}:
         formattext = text
         while "  " in formattext:
@@ -663,14 +667,14 @@ def get_phones_and_bert(text, language, version, final=False):
                 #formattext = chinese.mix_text_normalize(formattext)
                 #return get_phones_and_bert(formattext, "zh", version)
             #else:
-            phones, word2ph, norm_text = clean_text_inf(formattext, language, version)
+            phones, word2ph, norm_text, custom_indices  = clean_text_inf(formattext, language, version)
             bert = get_bert_feature(norm_text, word2ph).to(device)
         elif language == "all_yue" and re.search(r"[A-Za-z]", formattext):
             formattext = re.sub(r"[a-z]", lambda x: x.group(0).upper(), formattext)
             formattext = chinese.mix_text_normalize(formattext)
             return get_phones_and_bert(formattext, "yue", version)
         else:
-            phones, word2ph, norm_text = clean_text_inf(formattext, language, version)
+            phones, word2ph, norm_text, custom_indices  = clean_text_inf(formattext, language, version)
             bert = torch.zeros(
                 (1024, len(phones)),
                 dtype=torch.float16 if is_half == True else torch.float32,
@@ -715,7 +719,7 @@ def get_phones_and_bert(text, language, version, final=False):
     if not final and len(phones) < 6:
         return get_phones_and_bert("." + text, language, version, final=True)
 
-    return phones, bert.to(dtype), norm_text
+    return phones, bert.to(dtype), norm_text, word2ph, custom_indices 
 
 
 from module.mel_processing import mel_spectrogram_torch, spectrogram_torch
@@ -897,7 +901,7 @@ def get_tts_wav(
     audio_opt = []
     ###s2v3暂不支持ref_free
     if not ref_free:
-        phones1, bert1, norm_text1 = get_phones_and_bert(prompt_text, prompt_language, version)
+        phones1, bert1, norm_text1, word2ph1, custom_indices1 = get_phones_and_bert(prompt_text, prompt_language, version)
 
     for i_text, text in enumerate(texts):
         # 解决输入目标文本的空行导致报错的问题
@@ -906,7 +910,25 @@ def get_tts_wav(
         if text[-1] not in splits:
             text += "。" if text_language != "en" else "."
         print(i18n("实际输入的目标文本(每句):"), text)
-        phones2, bert2, norm_text2 = get_phones_and_bert(text, text_language, version)
+        phones2, bert2, norm_text2, word2ph2, custom_indices2 = get_phones_and_bert(text, text_language, version)
+
+        print(f"被注音的字符索引: {custom_indices2}")
+
+        # 对每个被注音的字符进行局部BERT特征修正
+        attenuation_factor = 0.1  # 衰减系数，可根据效果调整
+        for target_char_index in custom_indices2:
+            if target_char_index < len(word2ph2):
+                # 计算该字符对应的BERT特征维度范围
+                start_dim = sum(word2ph2[:target_char_index])
+                end_dim = start_dim + word2ph2[target_char_index]
+                
+                # 对这部分特征进行衰减
+                bert2[:, start_dim:end_dim] = bert2[:, start_dim:end_dim] * attenuation_factor
+                
+                print(f"[局部修正] 对字符 '{norm_text2[target_char_index]}'(位置{target_char_index})的BERT特征进行{attenuation_factor}倍衰减。")
+            else:
+                print(f"[警告] 索引{target_char_index}超出范围，word2ph长度为{len(word2ph2)}")
+
         print(i18n("前端处理后的文本(每句):"), norm_text2)
         if not ref_free:
             bert = torch.cat([bert1, bert2], 1)
