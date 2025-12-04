@@ -481,9 +481,10 @@ def find_custom_tone(text):
     pinyin_matches = list(re.finditer(r"\(([^)]+)\)", text))  
     pinyin_offset = 0  
     for match in pinyin_matches:  
-        pos = match.start() - pinyin_offset  
+        # 括号前面的字符位置（即要注音的汉字）
+        pos = match.start() - 1 - pinyin_offset
         pinyin = match.group(1)  
-        pinyin_offset += (2 + len(pinyin))  
+        pinyin_offset += (2 + len(pinyin))  # 移除括号和拼音
         data = [pinyin, pos, "full"]  # 标记为完整拼音  
         tone_list.append(data)  
       
@@ -500,6 +501,30 @@ def find_custom_tone(text):
       
     return re.sub(r"{.*?}", "", text), tone_list
 
+def print_word2ph_details(word2ph, phones, words, title):
+    """打印word2ph的详细解释"""
+    print(f"\n=== word2ph 详细分析 === {title}")
+    print(f"word2ph列表: {word2ph}")
+    print(f"总词数: {len(word2ph)}")
+    print(f"总音素数: {sum(word2ph)}")
+    print(f"音素序列长度: {len(phones)}")
+    
+    # 验证是否匹配
+    if sum(word2ph) == len(phones):
+        print("✓ word2ph总和与音素序列长度匹配")
+    else:
+        print(f"✗ 不匹配! word2ph总和={sum(word2ph)}, 音素长度={len(phones)}")
+    
+    # 显示每个词的音素分配
+    print("\n每个词的音素分配:")
+    current_pos = 0
+    for i, (count, word) in enumerate(zip(word2ph, words)):
+        assigned_phones = phones[current_pos:current_pos+count]
+        print(f"  词{i+1} ('{word}'): {count}个音素 -> {assigned_phones}")
+        current_pos += count
+
+from text.chinese2 import pinyin_to_symbol_map  
+
 def clean_text_inf(text, language, version):  
     language = language.replace("all_", "")  
       
@@ -507,23 +532,35 @@ def clean_text_inf(text, language, version):
     text, tone_data_list = find_custom_tone(text)  
       
     phones, word2ph, norm_text = clean_text(text, language, version)  
+    print_word2ph_details(word2ph, phones, list(norm_text), "after clean_text")
       
-    # 在转换为ID之前修改音素字符串  
+    # 将音素列表转换为可修改的列表
+    phones_list = []
+    for phone in phones:
+        if isinstance(phone, list):
+            phones_list.extend(phone)
+        else:
+            phones_list.append(phone)
+    
+    # 现在phones_list是展平的音素列表
+    # 我们需要计算每个字符对应的音素范围
+    char_to_phone_range = []
+    current_idx = 0
+    for i, count in enumerate(word2ph):
+        char_to_phone_range.append((current_idx, current_idx + count))
+        current_idx += count
+    
+    # 处理自定义读音替换
     for tone_data in tone_data_list:  
         content = tone_data[0]  
-        pos = tone_data[1]  
-        data_type = tone_data[2]  # "full" 或 "tone"  
-          
-        wd_pos = 0  
-        for i in range(0, pos):  
-            wd_pos += word2ph[i]  
-        wd_pos -= 1  
-          
-        if wd_pos >= 0 and wd_pos < len(phones):  
-            org_phones = phones[wd_pos]  
-              
+        pos = tone_data[1]  # 字符位置
+        data_type = tone_data[2]  # "full" 或 "tone"
+        
+        if pos < len(char_to_phone_range):
+            start_idx, end_idx = char_to_phone_range[pos]
+            
             if data_type == "full":  
-                # 完整拼音替换 - 保持原有音素结构  
+                # 完整拼音替换
                 from text.chinese2 import pinyin_to_symbol_map  
                   
                 if content and content[-1].isdigit():  
@@ -532,45 +569,46 @@ def clean_text_inf(text, language, version):
                       
                     if pinyin_without_tone in pinyin_to_symbol_map:  
                         symbol = pinyin_to_symbol_map[pinyin_without_tone]  
-                          
-                        # 分析原始音素结构  
-                        if isinstance(org_phones, str):  
-                            # 原始是单音素（韵母），如 en4, ang4  
-                            if " " in symbol:  
-                                # 目标拼音有声母，但原始没有，只取韵母部分  
-                                final = symbol.split(" ")[1]  
-                                phones[wd_pos] = final + tone  
-                            else:  
-                                # 目标拼音也没有声母  
-                                phones[wd_pos] = symbol + tone  
-                        elif isinstance(org_phones, list) and len(org_phones) == 2:  
-                            # 原始是双音素（声母+韵母）  
-                            if " " in symbol:  
-                                # 目标也有声母，正常替换  
-                                initial, final = symbol.split(" ")  
-                                phones[wd_pos] = [initial, final + tone]  
-                            else:  
-                                # 目标没有声母，构造虚拟声母  
-                                phones[wd_pos] = ["sp", symbol + tone]  
-                              
-                            print(f"[+]成功替换拼音: {org_phones} => {phones[wd_pos]}")  
-            elif data_type == "tone":  
-                # 仅修改声调  
-                if isinstance(org_phones, str) and org_phones[-1].isdigit():  
-                    phones[wd_pos] = org_phones[:-1] + content  
-                    print(f"[+]成功修改声调: {org_phones} => {phones[wd_pos]}")  
-      
-    # 展平音素列表并转换为整数ID  
-    flat_phones = []  
-    for phone in phones:  
-        if isinstance(phone, list):  
-            flat_phones.extend(phone)  
-        else:  
-            flat_phones.append(phone)  
-      
-    phones = cleaned_text_to_sequence(flat_phones, version)  
-      
-    return phones, word2ph, norm_text
+                        
+                        # 打印调试信息
+                        print(f"调试: 位置{pos}, 原始音素: {phones_list[start_idx:end_idx]}, 目标拼音: {content}")
+                        
+                        # 根据目标拼音替换
+                        if " " in symbol:
+                            # 目标有声母和韵母
+                            initial, final = symbol.split(" ")
+                            new_phones = [initial, final + tone]
+                        else:
+                            # 目标只有韵母
+                            new_phones = [symbol + tone]
+                        
+                        # 计算需要替换的音素数量
+                        old_count = end_idx - start_idx
+                        new_count = len(new_phones)
+                        
+                        # 替换音素
+                        phones_list[start_idx:end_idx] = new_phones
+                        
+                        # 调整word2ph和char_to_phone_range
+                        if new_count != old_count:
+                            diff = new_count - old_count
+                            word2ph[pos] = new_count
+                            
+                            # 更新后面字符的音素范围
+                            for j in range(pos + 1, len(char_to_phone_range)):
+                                old_start, old_end = char_to_phone_range[j]
+                                char_to_phone_range[j] = (old_start + diff, old_end + diff)
+                        
+                        print(f"[+]完整拼音替换: 位置{pos}({norm_text[pos]}) {phones_list[start_idx:start_idx+new_count]}")
+    
+    # 现在phones_list已经是展平后的音素列表
+    print_word2ph_details(word2ph, phones_list, list(norm_text), "before cleaned_text_to_sequence")
+    
+    # 转换为整数ID
+    phones_ids = cleaned_text_to_sequence(phones_list, version)  
+    print_word2ph_details(word2ph, phones_ids, list(norm_text), "final")
+
+    return phones_ids, word2ph, norm_text
 
 dtype = torch.float16 if is_half == True else torch.float32
 
